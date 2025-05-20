@@ -8,7 +8,6 @@
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
-    /* Reset e estilos básicos */
     * {
       margin: 0;
       padding: 0;
@@ -36,7 +35,6 @@
       width: 100%;
     }
 
-    /* Responsivo: ajusta fonte no mobile */
     @media (max-width: 768px) {
       h1 {
         font-size: 1.2rem;
@@ -65,8 +63,8 @@
     const db = firebase.database();
 
     // Inicialização do mapa
-    const initialLat = -20.357373;
-    const initialLng = -41.951484;
+    const initialLat = -23.550520;
+    const initialLng = -46.633308;
     const map = L.map('map').setView([initialLat, initialLng], 16);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
@@ -74,12 +72,20 @@
 
     const marker = L.marker([initialLat, initialLng]).addTo(map);
 
-    // Atualiza marcador em tempo real
+    // Escuta por mudanças no nó "/localizacao"
     db.ref("/localizacao").on("value", (snapshot) => {
       const data = snapshot.val();
-      if (data && data.latitude && data.longitude) {
-        marker.setLatLng([data.latitude, data.longitude]);
-        map.panTo([data.latitude, data.longitude]);
+      if (
+        data &&
+        typeof data.latitude === "number" &&
+        typeof data.longitude === "number"
+      ) {
+        const lat = data.latitude;
+        const lng = data.longitude;
+        marker.setLatLng([lat, lng]);
+        map.panTo([lat, lng]);
+      } else {
+        console.warn("Coordenadas inválidas recebidas do Firebase:", data);
       }
     });
   </script>
