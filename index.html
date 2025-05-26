@@ -35,6 +35,14 @@
       width: 100%;
     }
 
+    #status {
+      text-align: center;
+      padding: 10px;
+      font-size: 0.9rem;
+      background: #ffd700;
+      color: #000;
+    }
+
     @media (max-width: 768px) {
       h1 {
         font-size: 1.2rem;
@@ -49,45 +57,64 @@
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 </head>
 <body>
   <h1>Localização em Tempo Real</h1>
+  <div id="status">Autenticando...</div>
   <div id="map"></div>
 
   <script>
-    // 🔥 Configuração do Firebase
+    // Configuração do Firebase
     const firebaseConfig = {
+      apiKey: "AIzaSyB8aZCcS5FKDYrbDjRTbk_NLH1s55IUOUU",
+      authDomain: "rastreador-gps-2550c.firebaseapp.com",
       databaseURL: "https://rastreador-gps-2550c-default-rtdb.firebaseio.com/"
     };
     firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
 
-    // Inicialização do mapa
-    const initialLat = -23.550520;
-    const initialLng = -46.633308;
-    const map = L.map('map').setView([initialLat, initialLng], 16);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
+    const email = "ds4224625@gmail.com";
+    const senha = "barata234";
 
-    const marker = L.marker([initialLat, initialLng]).addTo(map);
+    const statusEl = document.getElementById("status");
 
-    // Escuta por mudanças no nó "/localizacao"
-    db.ref("/localizacao").on("value", (snapshot) => {
-      const data = snapshot.val();
-      if (
-        data &&
-        typeof data.latitude === "number" &&
-        typeof data.longitude === "number"
-      ) {
-        const lat = data.latitude;
-        const lng = data.longitude;
-        marker.setLatLng([lat, lng]);
-        map.panTo([lat, lng]);
-      } else {
-        console.warn("Coordenadas inválidas recebidas do Firebase:", data);
-      }
-    });
+    // Login com e-mail e senha
+    firebase.auth().signInWithEmailAndPassword(email, senha)
+      .then(() => {
+        statusEl.textContent = "Autenticado com sucesso!";
+        iniciarMapa();
+      })
+      .catch((error) => {
+        console.error("Erro ao autenticar:", error.message);
+        statusEl.textContent = "Erro ao autenticar: " + error.message;
+      });
+
+    function iniciarMapa() {
+      const db = firebase.database();
+
+      const initialLat = -23.550520;
+      const initialLng = -46.633308;
+      const map = L.map('map').setView([initialLat, initialLng], 16);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      const marker = L.marker([initialLat, initialLng]).addTo(map);
+
+      // Escuta por mudanças no Firebase
+      db.ref("/localizacao").on("value", (snapshot) => {
+        const data = snapshot.val();
+        if (data && typeof data.latitude === "number" && typeof data.longitude === "number") {
+          const lat = data.latitude;
+          const lng = data.longitude;
+          marker.setLatLng([lat, lng]);
+          map.panTo([lat, lng]);
+        } else {
+          console.warn("Coordenadas inválidas recebidas do Firebase:", data);
+        }
+      });
+    }
   </script>
 </body>
 </html>
