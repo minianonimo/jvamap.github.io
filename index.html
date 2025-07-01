@@ -3,69 +3,64 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Rastreador GPS</title>
+  <title>Rastreador GPS com Histórico</title>
 
-  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
     body {
-      font-family: 'Arial', sans-serif;
-      background-color: #f4f4f4;
+      font-family: Arial, sans-serif;
+      margin: 0;
       display: flex;
       flex-direction: column;
       height: 100vh;
+      background: #f4f4f4;
     }
 
     h1 {
-      text-align: center;
-      padding: 20px;
-      background-color: #333;
+      background: #333;
       color: #fff;
+      padding: 10px;
+      text-align: center;
       font-size: 1.5rem;
+    }
+
+    #status {
+      background: #ffd700;
+      padding: 10px;
+      text-align: center;
+      font-size: 0.9rem;
+    }
+
+    #controls {
+      padding: 10px;
+      text-align: center;
+      background: #eee;
     }
 
     #map {
       flex: 1;
       width: 100%;
     }
-
-    #status {
-      text-align: center;
-      padding: 10px;
-      font-size: 0.9rem;
-      background: #ffd700;
-      color: #000;
-    }
-
-    @media (max-width: 768px) {
-      h1 {
-        font-size: 1.2rem;
-        padding: 15px;
-      }
-    }
   </style>
 
-  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-
-  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 </head>
 <body>
-  <h1>Localização em Tempo Real</h1>
+  <h1>Rastreador GPS com Histórico</h1>
   <div id="status">Autenticando...</div>
+  <div id="controls">
+    <label for="datas">Ver histórico por data: </label>
+    <select id="datas">
+      <option value="">Selecione</option>
+    </select>
+  </div>
   <div id="map"></div>
 
   <script>
-    // Configuração do Firebase
+    // Configuração Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyB8aZCcS5FKDYrbDjRTbk_NLH1s55IUOUU",
       authDomain: "rastreador-gps-2550c.firebaseapp.com",
@@ -77,12 +72,17 @@
     const senha = "barata234";
 
     const statusEl = document.getElementById("status");
+    const selectDatas = document.getElementById("datas");
 
-    // Login com e-mail e senha
+    let map, marker, polyline;
+    const uid = "usuario1"; // substitua se quiser identificar vários usuários
+
     firebase.auth().signInWithEmailAndPassword(email, senha)
       .then(() => {
         statusEl.textContent = "Autenticado com sucesso!";
         iniciarMapa();
+        preencherHistorico();
+        setInterval(limparDadosAntigos, 5 * 60 * 1000); // a cada 5 minutos
       })
       .catch((error) => {
         console.error("Erro ao autenticar:", error.message);
@@ -90,29 +90,89 @@
       });
 
     function iniciarMapa() {
-      const db = firebase.database();
-
-      const initialLat = -23.550520;
+      const initialLat = -23.55052;
       const initialLng = -46.633308;
-      const map = L.map('map').setView([initialLat, initialLng], 16);
+      map = L.map('map').setView([initialLat, initialLng], 16);
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
       }).addTo(map);
 
-      const marker = L.marker([initialLat, initialLng]).addTo(map);
+      marker = L.marker([initialLat, initialLng]).addTo(map);
 
-      // Escuta por mudanças no Firebase
-      db.ref("/localizacao").on("value", (snapshot) => {
-        const data = snapshot.val();
-        if (data && typeof data.latitude === "number" && typeof data.longitude === "number") {
-          const lat = data.latitude;
-          const lng = data.longitude;
-          marker.setLatLng([lat, lng]);
-          map.panTo([lat, lng]);
-        } else {
-          console.warn("Coordenadas inválidas recebidas do Firebase:", data);
+      const db = firebase.database();
+      const hoje = new Date().toISOString().slice(0, 10);
+      const caminho = `/localizacoes/${hoje}/${uid}`;
+
+      db.ref(caminho).on("value", (snapshot) => {
+        const pontos = [];
+        snapshot.forEach(child => {
+          const p = child.val();
+          if (typeof p.latitude === "number" && typeof p.longitude === "number") {
+            pontos.push([p.latitude, p.longitude]);
+          }
+        });
+
+        if (pontos.length > 0) {
+          const ultimo = pontos[pontos.length - 1];
+          marker.setLatLng(ultimo);
+          map.panTo(ultimo);
         }
+
+        if (polyline) map.removeLayer(polyline);
+        polyline = L.polyline(pontos, { color: 'blue' }).addTo(map);
+      });
+    }
+
+    function preencherHistorico() {
+      const db = firebase.database();
+      db.ref("/localizacoes").once("value", (snapshot) => {
+        const datas = Object.keys(snapshot.val() || {});
+        datas.sort().reverse();
+        datas.forEach(data => {
+          const option = document.createElement("option");
+          option.value = data;
+          option.textContent = data;
+          selectDatas.appendChild(option);
+        });
+      });
+
+      selectDatas.onchange = () => {
+        if (!selectDatas.value) return;
+        mostrarRastroAntigo(selectDatas.value);
+      };
+    }
+
+    function mostrarRastroAntigo(dataSelecionada) {
+      const caminho = `/localizacoes/${dataSelecionada}/${uid}`;
+      firebase.database().ref(caminho).once("value", (snapshot) => {
+        const pontos = [];
+        snapshot.forEach(child => {
+          const p = child.val();
+          if (typeof p.latitude === "number" && typeof p.longitude === "number") {
+            pontos.push([p.latitude, p.longitude]);
+          }
+        });
+
+        if (polyline) map.removeLayer(polyline);
+        polyline = L.polyline(pontos, { color: 'green' }).addTo(map);
+        if (pontos.length > 0) map.fitBounds(polyline.getBounds());
+      });
+    }
+
+    function limparDadosAntigos() {
+      const agora = Date.now();
+      firebase.database().ref("/localizacoes").once("value", (snapshot) => {
+        snapshot.forEach((dataSnap) => {
+          dataSnap.forEach((userSnap) => {
+            userSnap.forEach((pontoSnap) => {
+              const timestamp = Number(pontoSnap.key);
+              if (!isNaN(timestamp) && (agora - timestamp > 86400000)) {
+                pontoSnap.ref.remove();
+              }
+            });
+          });
+        });
       });
     }
   </script>
