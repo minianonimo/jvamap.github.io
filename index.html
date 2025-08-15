@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+          <!DOCTYPE html>
 <html lang="pt-br">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Rastreador GPS com Frequência de Visitas</title>
+  <title>Rastreador GPS com Histórico</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
@@ -19,19 +19,10 @@
     h1 {
       background: #010409;
       color: #58a6ff;
-      padding: 12px 12px 12px 60px;
+      padding: 12px;
       text-align: center;
       font-size: 1.6rem;
       box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-      position: relative;
-    }
-    #logo {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      height: 70px;
-      border-radius: 50%;
-      box-shadow: 0 0 10px #00f0ff;
     }
     #status {
       background: #161b22;
@@ -66,10 +57,7 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 </head>
 <body>
-  <h1>
-    <img id="logo" src="img/neurotag.jpg" alt="Logo do Projeto" />
-    Rastreador GPS 
-  </h1>
+  <h1>Rastreador GPS</h1>
   <div id="status">Autenticando...</div>
   <div id="controls">
     <label for="datas">Histórico por Data:</label>
@@ -78,19 +66,6 @@
   <div id="map"></div>
 
   <script>
-    /* ==========================
-       CONFIGURAÇÃO LOCA
-       ========================== */
-    // Coordenadas aproximadas de Manhumirim-MG (ajuste se desejar o ponto EXATO da escola)
-    const BASE_LAT = -20.3590;
-    const BASE_LNG = -41.9580;
-
-    // UID que você já usa
-    const uid = "usuario1";
-
-    /* ==========================
-       FIREBASE
-       ========================== */
     const firebaseConfig = {
       apiKey: "AIzaSyB8aZCcS5FKDYrbDjRTbk_NLH1s55IUOUU",
       authDomain: "rastreador-gps-2550c.firebaseapp.com",
@@ -100,6 +75,7 @@
 
     const email = "ds4224625@gmail.com";
     const senha = "barata234";
+    const uid = "usuario1";
 
     const statusEl = document.getElementById("status");
     const selectDatas = document.getElementById("datas");
@@ -107,43 +83,32 @@
     let map, marker, linhas = [], heatMap = {};
 
     firebase.auth().signInWithEmailAndPassword(email, senha)
-      .then(async () => {
+      .then(() => {
         statusEl.textContent = "Autenticado com sucesso!";
-        await seedHistoricoIfEmpty();      // <<<<<< cria histórico simulado (últimos 30 dias)
-        iniciarMapa();                     // inicia mapa “ao vivo” (hoje)
-        preencherHistorico();              // preenche select com datas
+        iniciarMapa();
+        preencherHistorico();
         setInterval(limparDadosAntigos, 5 * 60 * 1000);
       })
       .catch((error) => {
         statusEl.textContent = "Erro ao autenticar: " + error.message;
       });
 
-    /* ==========================
-       MAPA “AO VIVO” (HOJE)
-       ========================== */
     function iniciarMapa() {
-      map = L.map('map').setView([BASE_LAT, BASE_LNG], 15);
+      map = L.map('map').setView([-20.3584, -41.9582], 15);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap'
       }).addTo(map);
 
-      marker = L.marker([BASE_LAT, BASE_LNG]).addTo(map);
+      marker = L.marker([-20.3584, -41.9582]).addTo(map);
 
       const hoje = new Date().toISOString().slice(0, 10);
       const caminho = `/localizacoes/${hoje}/${uid}`;
 
       firebase.database().ref(caminho).on("value", (snapshot) => {
         const pontos = [];
-        heatMap = {}; // reset para o dia atual
-
-        // Ordena por timestamp crescente
-        const arr = [];
-        snapshot.forEach(child => arr.push({ key: child.key, val: child.val() }));
-        arr.sort((a,b) => Number(a.key) - Number(b.key));
-
-        arr.forEach(({val}) => {
-          const { latitude, longitude } = val || {};
-          if (typeof latitude === "number" && typeof longitude === "number") {
+        snapshot.forEach((snap) => {
+          const { latitude, longitude } = snap.val();
+          if (latitude && longitude) {
             const key = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
             heatMap[key] = (heatMap[key] || 0) + 1;
             pontos.push([latitude, longitude]);
@@ -151,20 +116,15 @@
         });
 
         if (pontos.length) {
-          const last = pontos[pontos.length - 1];
-          marker.setLatLng(last);
-          map.panTo(last);
+          marker.setLatLng(pontos[pontos.length - 1]);
+          map.panTo(pontos[pontos.length - 1]);
         }
 
         desenharLinhas(pontos);
       });
     }
 
-    /* ==========================
-       DESENHAR RASTRO COM CORES
-       ========================== */
     function desenharLinhas(pontos) {
-      // limpa linhas antigas
       linhas.forEach(linha => map.removeLayer(linha));
       linhas.length = 0;
 
@@ -173,9 +133,9 @@
         const p2 = pontos[i];
         const chave = `${p2[0].toFixed(5)},${p2[1].toFixed(5)}`;
         const freq = heatMap[chave] || 1;
-        // vermelho = 1a vez; amarelo = >=3; azul = >=4/semana (aqui usamos freq aproximado no dia)
+
         let cor = "red";
-        if (freq >= 4) cor = "blue";
+        if (freq >= 10) cor = "blue";
         else if (freq >= 3) cor = "yellow";
 
         const linha = L.polyline([p1, p2], { color: cor, weight: 4 }).addTo(map);
@@ -183,19 +143,20 @@
       }
     }
 
-    /* ==========================
-       HISTÓRICO (SELECT)
-       ========================== */
     function preencherHistorico() {
       firebase.database().ref("/localizacoes").once("value", (snap) => {
         const datas = Object.keys(snap.val() || {}).sort().reverse();
-        selectDatas.innerHTML = '<option value="">Selecione</option>';
-        datas.forEach(data => {
-          const opt = document.createElement("option");
-          opt.value = data;
-          opt.textContent = data;
-          selectDatas.appendChild(opt);
-        });
+
+        if (datas.length === 0) {
+          simularHistorico();
+        } else {
+          datas.forEach(data => {
+            const opt = document.createElement("option");
+            opt.value = data;
+            opt.textContent = data;
+            selectDatas.appendChild(opt);
+          });
+        }
       });
 
       selectDatas.onchange = () => {
@@ -205,36 +166,38 @@
       };
     }
 
+    function simularHistorico() {
+      const baseLat = -20.3584;
+      const baseLng = -41.9582;
+      const hoje = new Date();
+
+      for (let d = 30; d >= 1; d--) {
+        const dia = new Date();
+        dia.setDate(hoje.getDate() - d);
+        const dataStr = dia.toISOString().slice(0, 10);
+
+        const pontosDia = [];
+        for (let i = 0; i < 10; i++) {
+          pontosDia.push({
+            latitude: baseLat + (Math.random() - 0.5) * 0.002,
+            longitude: baseLng + (Math.random() - 0.5) * 0.002
+          });
+        }
+        firebase.database().ref(`/localizacoes/${dataStr}/${uid}`).set(pontosDia);
+      }
+    }
+
     function mostrarRastro(data) {
       firebase.database().ref(`/localizacoes/${data}/${uid}`).once("value", (snap) => {
         const pontos = [];
-        heatMap = {}; // reset para o dia escolhido
-
-        // ordenar por timestamp
-        const arr = [];
-        snap.forEach(child => arr.push({ key: child.key, val: child.val() }));
-        arr.sort((a,b) => Number(a.key) - Number(b.key));
-
-        arr.forEach(({val}) => {
-          const { latitude, longitude } = val || {};
-          if (typeof latitude === "number" && typeof longitude === "number") {
-            const key = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
-            heatMap[key] = (heatMap[key] || 0) + 1;
-            pontos.push([latitude, longitude]);
-          }
+        snap.forEach(child => {
+          const { latitude, longitude } = child.val();
+          if (latitude && longitude) pontos.push([latitude, longitude]);
         });
-
         desenharLinhas(pontos);
-        if (pontos.length) {
-          const bounds = L.latLngBounds(pontos);
-          map.fitBounds(bounds, { padding: [30,30] });
-        }
       });
     }
 
-    /* ==========================
-       LIMPAR DADOS ANTIGOS (>24h)
-       ========================== */
     function limparDadosAntigos() {
       const agora = Date.now();
       firebase.database().ref("/localizacoes").once("value", (snapshot) => {
@@ -250,80 +213,6 @@
         });
       });
     }
-
-    /* ==========================
-       SEED DE HISTÓRICO (30 DIAS)
-       ========================== */
-    async function seedHistoricoIfEmpty() {
-      const db = firebase.database();
-
-      // verifica se já existe algum dia no último mês
-      const start = new Date();
-      start.setDate(start.getDate() - 30);
-      const end = new Date();
-      end.setDate(end.getDate() - 1); // até ontem
-
-      const checkSnap = await db.ref("/localizacoes").once("value");
-      const temAlgum = !!checkSnap.val();
-      if (temAlgum) return; // já tem histórico, não sobrescreve
-
-      // Rotas simuladas (pequenas variações ao redor do ponto base)
-      function jitter(val, metros=60) {
-        const deg = metros / 111320; // ~1 deg ~ 111.32 km
-        return val + (Math.random() - 0.5) * deg;
-      }
-
-      function caminhoManha() {
-        // Base → “escola” → praça → volta
-        return [
-          [jitter(BASE_LAT, 0), jitter(BASE_LNG, 0)],
-          [jitter(BASE_LAT+0.0008), jitter(BASE_LNG-0.0006)],
-          [jitter(BASE_LAT+0.0012), jitter(BASE_LNG-0.0009)],
-          [jitter(BASE_LAT+0.0010), jitter(BASE_LNG-0.0002)],
-          [jitter(BASE_LAT+0.0003), jitter(BASE_LNG+0.0001)],
-          [jitter(BASE_LAT, 0), jitter(BASE_LNG, 0)]
-        ];
-      }
-
-      function caminhoTarde() {
-        // Base → mercadinho → rua paralela → volta
-        return [
-          [jitter(BASE_LAT, 0), jitter(BASE_LNG, 0)],
-          [jitter(BASE_LAT-0.0007), jitter(BASE_LNG+0.0003)],
-          [jitter(BASE_LAT-0.0010), jitter(BASE_LNG+0.0008)],
-          [jitter(BASE_LAT-0.0004), jitter(BASE_LNG+0.0010)],
-          [jitter(BASE_LAT, 0), jitter(BASE_LNG, 0)]
-        ];
-      }
-
-      // grava pontos no dia (timestamps espaçados)
-      async function gravarDia(dataISO, rotas) {
-        const baseDate = new Date(dataISO + "T08:00:00");
-        let t = baseDate.getTime();
-        for (const rota of rotas) {
-          for (const [lat,lng] of rota) {
-            const path = `/localizacoes/${dataISO}/${uid}/${t}`;
-            await db.ref(path).set({ latitude: lat, longitude: lng });
-            t += 1000 * 60 * 3; // a cada 3 min
-          }
-          t += 1000 * 60 * 30; // pausa 30 min entre rotas
-        }
-      }
-
-      // percorre dias úteis com duas “caminhadas”, fins de semana uma só
-      const cursor = new Date(start);
-      while (cursor <= end) {
-        const iso = cursor.toISOString().slice(0,10);
-        if (cursor.getDay() === 0 || cursor.getDay() === 6) {
-          // fim de semana: 1 rota
-          await gravarDia(iso, [caminhoTarde()]);
-        } else {
-          // dias úteis: 2 rotas (manhã e tarde)
-          await gravarDia(iso, [caminhoManha(), caminhoTarde()]);
-        }
-        cursor.setDate(cursor.getDate() + 1);
-      }
-    }
   </script>
 </body>
-</html>
+</html>        
