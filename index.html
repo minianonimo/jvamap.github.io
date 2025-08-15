@@ -173,7 +173,6 @@
         const p2 = pontos[i];
         const chave = `${p2[0].toFixed(5)},${p2[1].toFixed(5)}`;
         const freq = heatMap[chave] || 1;
-
         // vermelho = 1a vez; amarelo = >=3; azul = >=4/semana (aqui usamos freq aproximado no dia)
         let cor = "red";
         if (freq >= 4) cor = "blue";
